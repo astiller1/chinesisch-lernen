@@ -1,30 +1,43 @@
-// Aufruf der Claude-API: über den eigenen Worker (Schlüssel auf dem Server) oder lokal mit eigenem Schlüssel.
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import type { z } from 'zod';
-import type { ModelId } from '../data/scenarios';
+// Aufruf der KI: über den eigenen Worker (lokales Qwen, sonst Cloudflare) oder lokal direkt bei Ollama.
+import { z } from 'zod';
+import { apiUrl } from '../lib/server';
+import { extractJson, ollamaChat, toMessages, type ChatRequest, type ChatResponse, type Engine, type Turn } from './llm';
 
-export interface Turn {
-  role: 'user' | 'assistant' | 'system';
-  /** Text, wie er an die API ging bzw. von ihr kam (bei der KI: das JSON) */
-  content: string;
-}
+export type { Turn } from './llm';
 
 export interface Connection {
-  /** true: Anfragen gehen an /api/anthropic des Workers, der den Schlüssel ergänzt */
+  /** true: Anfragen gehen an /api/chat des Workers */
   viaServer: boolean;
-  apiKey: string;
-  model: ModelId;
+  /** ohne Worker: Ollama auf diesem Rechner */
+  ollamaUrl: string;
+  ollamaModel: string;
 }
 
 export class TutorError extends Error {}
 
-function client(c: Connection): Anthropic {
-  if (c.viaServer) {
-    // Der Worker ersetzt den Platzhalter-Schlüssel durch den echten.
-    return new Anthropic({ apiKey: 'server', baseURL: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}api/anthropic`, dangerouslyAllowBrowser: true });
+/** Wer zuletzt geantwortet hat (für die Anzeige in den Einstellungen). */
+export let lastEngine: Engine | null = null;
+
+async function viaServer(request: ChatRequest): Promise<ChatResponse> {
+  let res: Response;
+  try {
+    res = await fetch(apiUrl('chat'), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request) });
+  } catch {
+    throw new TutorError('Keine Verbindung zum Server. Internet prüfen.');
   }
-  return new Anthropic({ apiKey: c.apiKey, dangerouslyAllowBrowser: true });
+  if (res.status === 403) throw new TutorError('Nicht angemeldet. Bitte die Seite neu laden.');
+  if (res.status === 429) throw new TutorError('Das kostenlose Tageskontingent bei Cloudflare ist aufgebraucht. Morgen geht es weiter – oder den PC einschalten.');
+  if (!res.ok) throw new TutorError(`Die KI ist gerade nicht erreichbar (${res.status}). Bitte noch einmal versuchen.`);
+  return (await res.json()) as ChatResponse;
+}
+
+async function direct(c: Connection, request: ChatRequest): Promise<ChatResponse> {
+  try {
+    const text = await ollamaChat(c.ollamaUrl, c.ollamaModel, toMessages(request.system, request.turns, request.schema), request.schema);
+    return { text, engine: 'lokal' };
+  } catch {
+    throw new TutorError(`Ollama unter ${c.ollamaUrl} antwortet nicht (Modell „${c.ollamaModel}“). Läuft Ollama?`);
+  }
 }
 
 /** Schickt den Verlauf und liefert die Antwort im gegebenen Format sowie den Rohtext für den Verlauf. */
@@ -34,36 +47,17 @@ export async function ask<S extends z.ZodType>(
   turns: Turn[],
   schema: S,
 ): Promise<{ value: z.infer<S>; raw: string }> {
-  try {
-    const response = await client(c).beta.messages.parse({
-      model: c.model,
-      max_tokens: 8000,
-      // Kurze Gesprächszüge: wenig Nachdenken, schnelle Antwort.
-      output_config: { effort: 'low', format: betaZodOutputFormat(schema) },
-      system,
-      // Verlauf wird nur angehängt, so greift der Cache bei jedem weiteren Zug.
-      cache_control: { type: 'ephemeral' },
-      messages: turns.map((t) => ({ role: t.role, content: t.content })),
-      // Lehnt ein Sicherheitsfilter fälschlich ab, übernimmt automatisch ein anderes Modell.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-    });
-    if (response.stop_reason === 'refusal') throw new TutorError('Die KI hat diese Anfrage abgelehnt. Formuliere bitte anders.');
-    if (response.stop_reason === 'max_tokens') throw new TutorError('Die Antwort wurde abgeschnitten. Bitte noch einmal versuchen.');
-    const value = response.parsed_output;
-    const raw = response.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-    if (value == null || !raw) throw new TutorError('Die Antwort der KI war unvollständig. Bitte noch einmal versuchen.');
-    return { value, raw };
-  } catch (e) {
-    if (e instanceof TutorError) throw e;
-    if (e instanceof Anthropic.AuthenticationError) {
-      throw new TutorError(c.viaServer ? 'Der Claude-Schlüssel auf dem Server fehlt oder ist ungültig.' : 'API-Schlüssel ungültig. Bitte in den Einstellungen prüfen.');
+  const request: ChatRequest = { system, turns, schema: z.toJSONSchema(schema) };
+  // Kleine Modelle halten das Format nicht immer ein: einmal neu versuchen.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { text, engine } = c.viaServer ? await viaServer(request) : await direct(c, request);
+    lastEngine = engine;
+    try {
+      const value = schema.parse(JSON.parse(extractJson(text)));
+      return { value, raw: JSON.stringify(value) };
+    } catch {
+      // nächster Versuch
     }
-    if (e instanceof Anthropic.PermissionDeniedError) throw new TutorError('Kein Zugriff (Anmeldung, Guthaben oder Rechte prüfen).');
-    if (e instanceof Anthropic.RateLimitError) throw new TutorError('Zu viele Anfragen. Kurz warten und noch einmal versuchen.');
-    if (e instanceof Anthropic.BadRequestError) throw new TutorError(`Anfrage abgelehnt: ${e.message}`);
-    if (e instanceof Anthropic.APIConnectionError) throw new TutorError('Keine Verbindung zur KI. Internet prüfen.');
-    if (e instanceof Anthropic.APIError) throw new TutorError(`Fehler der KI (${e.status ?? '?'}). Bitte noch einmal versuchen.`);
-    throw e;
   }
+  throw new TutorError('Die Antwort der KI war unvollständig. Bitte noch einmal versuchen.');
 }

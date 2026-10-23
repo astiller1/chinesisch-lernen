@@ -12,9 +12,16 @@
 - Azure Speech: natürliche Stimme, Erkennung, Ausspracheprüfung
 - Cloudflare Worker: Schlüssel auf dem Server, nur mit Cloudflare-Access-Anmeldung
 
+## Version 0.3 (in Arbeit)
+- KI kostenlos statt Claude: lokales Qwen (`qwen-local`) auf Jans PC über den Tunnel, sonst Qwen auf
+  Cloudflare Workers AI. Lokal getestet (23.10.2026): gültige Antworten, ca. 17–20 s pro Zug.
+- Noch zu tun: Cloudflare einrichten (Worker, Access für die App, Tunnel `ollama.jan-lab.de` + Service-Token),
+  Workers-AI-Qwen live testen, `tools/einrichten.sh` und README-Abschnitte Einrichten/Kosten anpassen.
+
 ## Offen / zu prüfen
-- **Mit echten Schlüsseln testen** (bisher nur mit simulierten Antworten): Erkennung zh-CN, Ausspracheprüfung
-  (bewertet sie Töne?), Stimmen und Tempo, Kosten je Stunde.
+- **Mit echten Schlüsseln testen:** Erkennung zh-CN, Ausspracheprüfung (bewertet sie Töne?), Stimmen und Tempo.
+- **Qualität und Tempo der KI:** Qwen korrigiert schwächer als Claude (z. B. bestätigt falsche Mengen) und hängt
+  Satzzeichen an Wörter; Antworten schlanker machen (Schema), ggf. `qwen-schnell` vergleichen.
 - **Ton-Rückmeldung:** Liefert Azure für zh-CN Silben/Phoneme mit Ton, zeigen wir sie je Silbe; sonst
   Tonhöhenverlauf selbst messen und mit der Vorlage vergleichen.
 - **Gedächtnis geräteübergreifend:** liegt bisher im localStorage des Geräts. Option: Cloudflare KV/D1 im Worker.

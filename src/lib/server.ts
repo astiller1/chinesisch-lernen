@@ -1,13 +1,13 @@
 // Was der eigene Server (Cloudflare Worker) bereitstellt. Lokal ohne Worker: nichts.
 
 export interface ServerStatus {
-  /** Claude-Schlüssel liegt auf dem Server */
-  claude: boolean;
+  /** Der Server erreicht eine KI (lokales Qwen und/oder Cloudflare Workers AI) */
+  ai: boolean;
   /** Azure Speech ist eingerichtet */
   speech: boolean;
 }
 
-export const server: ServerStatus = { claude: false, speech: false };
+export const server: ServerStatus = { ai: false, speech: false };
 
 /** Relativ zur App, damit sie auch unter einem Unterpfad läuft. */
 export function apiUrl(path: string): string {

@@ -36,12 +36,9 @@ let lastSpoken = false;
 const log = () => document.getElementById('log')!;
 const input = () => document.getElementById('input') as HTMLTextAreaElement;
 
-function connection(): Connection | null {
+function connection(): Connection {
   const s = store.settings;
-  if (server.claude) return { viaServer: true, apiKey: '', model: s.model };
-  if (s.apiKey) return { viaServer: false, apiKey: s.apiKey, model: s.model };
-  toast('Kein Claude-Zugang: Schlüssel auf dem Server einrichten oder in den Einstellungen eintragen.');
-  return null;
+  return { viaServer: server.ai, ollamaUrl: s.ollamaUrl, ollamaModel: s.ollamaModel };
 }
 
 export function initChat(): void {
@@ -144,7 +141,7 @@ async function notUnderstoodTurn(): Promise<void> {
 /** Ein Gesprächszug: Nachricht senden, Antwort zeigen, Gedächtnis und Niveau aktualisieren. */
 async function turn(message: string, shown?: ChatEntry): Promise<void> {
   const conn = connection();
-  if (!conn || busy) return;
+  if (busy) return;
   busy = true;
   const conv = store.conversation;
   const added: HTMLElement[] = [];
@@ -215,7 +212,6 @@ async function endLesson(): Promise<void> {
     return;
   }
   const conn = connection();
-  if (!conn) return;
   busy = true;
   const turnsBefore = conv.turns.length;
   conv.turns.push({ role: 'user', content: END_LESSON_MESSAGE });

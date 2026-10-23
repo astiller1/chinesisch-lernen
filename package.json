@@ -12,7 +12,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.2.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.53.0",
     "pinyin-pro": "^3.29.5",
     "zod": "^4.6.7"

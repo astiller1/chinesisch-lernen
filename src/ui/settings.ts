@@ -1,15 +1,17 @@
 // Einstellungen und „Was 林老师 über dich weiß“ (Gedächtnis ansehen, korrigieren, zurücksetzen).
-import { LEVELS, MODELS } from '../data/scenarios';
+import { LEVELS } from '../data/scenarios';
 import { TEACHER } from '../ai/prompt';
+import { ENGINE_NAMES } from '../ai/llm';
+import { lastEngine } from '../ai/tutor';
 import { save, startLevel, store, type Settings } from '../lib/store';
 import { clampLevel, newLearner } from '../lib/learner';
 import { VOICES } from '../lib/ssml';
 import { server } from '../lib/server';
 import { usesAzure } from '../speech';
 import { button, el } from './dom';
-import { say, toast } from './shared';
+import { say } from './shared';
 
-function select<K extends 'model' | 'level' | 'voice'>(key: K, options: readonly { id: string; name: string }[]): HTMLSelectElement {
+function select<K extends 'level' | 'voice'>(key: K, options: readonly { id: string; name: string }[]): HTMLSelectElement {
   const s = el('select');
   for (const o of options) s.append(el('option', { value: o.id }, o.name));
   s.value = String(store.settings[key]);
@@ -38,18 +40,23 @@ function status(ok: boolean, yes: string, no: string): HTMLElement {
   return el('div', { class: `status ${ok ? 'ok' : 'warn'}` }, ok ? `✓ ${yes}` : `⚠ ${no}`);
 }
 
-function claudeSection(): HTMLElement[] {
-  if (server.claude) return [status(true, 'Claude: Schlüssel liegt sicher auf dem Server', '')];
-  const key = el('input', { type: 'password', autocomplete: 'off', placeholder: 'sk-ant-…' });
-  key.value = store.settings.apiKey;
-  key.addEventListener('change', () => {
-    store.settings.apiKey = key.value.trim();
+function text(key: 'ollamaUrl' | 'ollamaModel'): HTMLInputElement {
+  const input = el('input', { type: 'text', autocomplete: 'off' });
+  input.value = store.settings[key];
+  input.addEventListener('change', () => {
+    store.settings[key] = input.value.trim();
     save();
-    toast('Schlüssel gespeichert.');
   });
+  return input;
+}
+
+function aiSection(): HTMLElement[] {
+  const last = lastEngine ? ` Zuletzt hat ${ENGINE_NAMES[lastEngine]} geantwortet.` : '';
+  if (server.ai) return [status(true, `KI: kostenlos – Qwen auf deinem PC, wenn er an ist, sonst Qwen bei Cloudflare.${last}`, '')];
   return [
-    status(false, '', 'Claude: kein Schlüssel auf dem Server (lokaler Modus)'),
-    field('Claude-API-Schlüssel (nur für lokalen Betrieb)', key, 'Bleibt nur in diesem Browser. Auf dem Handy den Worker benutzen, siehe README.'),
+    status(false, '', 'KI: kein Server (lokaler Modus mit Ollama auf diesem Rechner)'),
+    field('Ollama-Adresse', text('ollamaUrl')),
+    field('Ollama-Modell', text('ollamaModel'), 'z. B. qwen-local oder qwen-schnell'),
   ];
 }
 
@@ -133,8 +140,7 @@ function memorySection(): HTMLElement[] {
 export function renderSettings(): void {
   document.getElementById('settings-view')!.replaceChildren(
     el('h2', {}, 'Einstellungen'),
-    ...claudeSection(),
-    field('KI-Modell', select('model', MODELS), 'Opus antwortet am besten, Haiku ist am günstigsten.'),
+    ...aiSection(),
     ...speechSection(),
     ...memorySection(),
   );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { verifyAccess } from '../worker/access';
 import worker, { type Env } from '../worker/index';
+import { extractJson, toMessages } from '../src/ai/llm';
 
 const TEAM = 'jan.cloudflareaccess.com';
 const AUD = 'aud123';
@@ -61,15 +62,45 @@ describe('Worker', () => {
   });
 
   it('sperrt /api ohne Access-Konfiguration', async () => {
-    const res = await worker.fetch(new Request('https://x/api/config'), { ASSETS: assets, ANTHROPIC_API_KEY: 'k' } as Env);
+    const res = await worker.fetch(new Request('https://x/api/config'), { ASSETS: assets, OLLAMA_URL: 'https://o' } as Env);
     expect(res.status).toBe(403);
   });
 
   it('meldet, was eingerichtet ist', async () => {
-    const env = { ASSETS: assets, ANTHROPIC_API_KEY: 'k', ALLOW_WITHOUT_ACCESS: '1' } as Env;
+    const env = { ASSETS: assets, OLLAMA_URL: 'https://o', ALLOW_WITHOUT_ACCESS: '1' } as Env;
     const res = await worker.fetch(new Request('https://x/api/config'), env);
-    expect(await res.json()).toEqual({ claude: true, speech: false });
+    expect(await res.json()).toEqual({ ai: true, speech: false });
     const tts = await worker.fetch(new Request('https://x/api/speech/tts', { method: 'POST', body: '{}' }), env);
     expect(tts.status).toBe(503);
+  });
+
+  it('nimmt Cloudflare, wenn der PC nicht erreichbar ist', async () => {
+    const ai = { run: async () => ({ response: '<think>hm</think>{"a":1}' }) };
+    const env = { ASSETS: assets, OLLAMA_URL: 'https://nicht-erreichbar.invalid', AI: ai, ALLOW_WITHOUT_ACCESS: '1' } as Env;
+    const body = JSON.stringify({ system: 's', turns: [{ role: 'user', content: 'hi' }], schema: {} });
+    const res = await worker.fetch(new Request('https://x/api/chat', { method: 'POST', body }), env);
+    expect(await res.json()).toEqual({ text: '<think>hm</think>{"a":1}', engine: 'cloudflare' });
+  });
+});
+
+describe('KI-Nachrichten', () => {
+  it('setzt das Format in die Systemanweisung und hängt Hinweise an die Nutzernachricht', () => {
+    const m = toMessages(
+      'Lehrerin',
+      [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: '{}' },
+        { role: 'user', content: 'b' },
+        { role: 'system', content: 'Niveau 2' },
+      ],
+      { type: 'object' },
+    );
+    expect(m.map((x) => x.role)).toEqual(['system', 'user', 'assistant', 'user']);
+    expect(m[0].content).toContain('{"type":"object"}');
+    expect(m[3].content).toBe('b\n\n[Hinweis] Niveau 2');
+  });
+
+  it('holt das JSON aus der Antwort', () => {
+    expect(extractJson('<think>\n{x}\n</think>\n```json\n{"a": {"b": 1}}\n```')).toBe('{"a": {"b": 1}}');
   });
 });

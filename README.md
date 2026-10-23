@@ -2,7 +2,7 @@
 
 Persönliche Web-App fürs Handy und den PC: **Plaudern mit einer KI-Chinesischlehrerin** (林老师, Lín lǎoshī),
 die dich behutsam verbessert, sich merkt, was du kannst, und dich nach und nach weiterbringt. **Pinyin überall**,
-nach Ton gefärbt über jedem Zeichen. Gehirn: Claude. Stimme, Spracherkennung und Ausspracheprüfung: Azure Speech.
+nach Ton gefärbt über jedem Zeichen. Gehirn: Qwen, kostenlos (auf dem eigenen PC, sonst bei Cloudflare). Stimme, Spracherkennung und Ausspracheprüfung: Azure Speech.
 
 ## Was die App kann
 - **Stunden mit 林老师:** Thema wählen (Plaudern, Restaurant, Taxi …), sprechen per 🎤, sie antwortet kurz und fragt

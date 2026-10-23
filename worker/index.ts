@@ -1,11 +1,19 @@
-// Cloudflare Worker: liefert die App aus und hält die Schlüssel für Claude und Azure Speech auf dem Server.
+// Cloudflare Worker: liefert die App aus, fragt die KI (kostenlos) und hält den Azure-Schlüssel auf dem Server.
 // Alle /api-Adressen nur mit gültiger Cloudflare-Access-Anmeldung.
 import { accessToken, verifyAccess } from './access';
 import { buildSsml, MAX_TTS_CHARS } from '../src/lib/ssml';
+import { ollamaChat, toMessages, workersAiChat, type ChatRequest, type ChatResponse } from '../src/ai/llm';
 
 export interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  ANTHROPIC_API_KEY?: string;
+  /** Cloudflare Workers AI (kostenloses Tageskontingent), Ersatz, wenn der PC aus ist */
+  AI?: { run(model: string, input: object): Promise<unknown> };
+  /** Ollama auf Jans PC über den Cloudflare-Tunnel, z. B. "https://ollama.jan-lab.de" */
+  OLLAMA_URL?: string;
+  OLLAMA_MODEL?: string;
+  /** Access-Service-Token, mit dem der Worker durch die Sperre vor Ollama kommt */
+  OLLAMA_ACCESS_ID?: string;
+  OLLAMA_ACCESS_SECRET?: string;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
   /** z. B. "jan-lab.cloudflareaccess.com" */
@@ -28,15 +36,32 @@ async function allowed(request: Request, env: Env): Promise<boolean> {
 
 const speechReady = (env: Env) => !!(env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION);
 
-async function anthropic(request: Request, env: Env): Promise<Response> {
-  if (!env.ANTHROPIC_API_KEY) return json({ type: 'error', error: { type: 'authentication_error', message: 'Kein Claude-Schlüssel auf dem Server' } }, 401);
-  const headers = new Headers({ 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY });
-  for (const h of ['anthropic-version', 'anthropic-beta']) {
-    const v = request.headers.get(h);
-    if (v) headers.set(h, v);
+const aiReady = (env: Env) => !!(env.AI || env.OLLAMA_URL);
+
+/** Erst das lokale Qwen (PC an?), sonst Qwen auf Workers AI. */
+async function chat(request: Request, env: Env): Promise<Response> {
+  const { system, turns, schema } = (await request.json()) as ChatRequest;
+  if (typeof system !== 'string' || !Array.isArray(turns) || typeof schema !== 'object') return json({ error: 'Ungültige Anfrage' }, 400);
+  const messages = toMessages(system, turns, schema);
+  if (env.OLLAMA_URL) {
+    try {
+      const headers: Record<string, string> = env.OLLAMA_ACCESS_ID
+        ? { 'CF-Access-Client-Id': env.OLLAMA_ACCESS_ID, 'CF-Access-Client-Secret': env.OLLAMA_ACCESS_SECRET ?? '' }
+        : {};
+      const text = await ollamaChat(env.OLLAMA_URL, env.OLLAMA_MODEL ?? 'qwen-local', messages, schema, headers);
+      return json({ text, engine: 'lokal' } satisfies ChatResponse);
+    } catch {
+      // PC aus oder Tunnel weg: weiter mit Cloudflare
+    }
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: request.body });
-  return new Response(res.body, { status: res.status, headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' } });
+  if (!env.AI) return json({ error: 'Keine KI erreichbar' }, 503);
+  try {
+    return json({ text: await workersAiChat(env.AI, messages), engine: 'cloudflare' } satisfies ChatResponse);
+  } catch (e) {
+    // Tageskontingent aufgebraucht: Cloudflare meldet das als Fehler 4006.
+    const limit = /4006|daily free allocation|neurons/i.test(String(e));
+    return json({ error: limit ? 'Tageskontingent aufgebraucht' : `Workers AI: ${String(e)}` }, limit ? 429 : 502);
+  }
 }
 
 async function speechToken(env: Env): Promise<Response> {
@@ -72,8 +97,8 @@ export default {
     if (!(await allowed(request, env))) return json({ error: 'Nicht angemeldet' }, 403);
 
     const route = `${request.method} ${url.pathname}`;
-    if (route === 'GET /api/config') return json({ claude: !!env.ANTHROPIC_API_KEY, speech: speechReady(env) });
-    if (route === 'POST /api/anthropic/v1/messages') return anthropic(request, env);
+    if (route === 'GET /api/config') return json({ ai: aiReady(env), speech: speechReady(env) });
+    if (route === 'POST /api/chat') return chat(request, env);
     if (!speechReady(env) && url.pathname.startsWith('/api/speech')) return json({ error: 'Azure Speech nicht eingerichtet' }, 503);
     if (route === 'GET /api/speech/token') return speechToken(env);
     if (route === 'POST /api/speech/tts') return tts(request, env);

@@ -88,11 +88,3 @@ export const LEVELS = [
 ] as const satisfies readonly Level[];
 
 export type LevelId = (typeof LEVELS)[number]['id'];
-
-export const MODELS = [
-  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (beste Qualität)' },
-  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5 (günstiger)' },
-  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5 (am günstigsten, schnell)' },
-] as const;
-
-export type ModelId = (typeof MODELS)[number]['id'];

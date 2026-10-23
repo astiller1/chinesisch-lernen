@@ -10,5 +10,5 @@
     "isolatedModules": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["./**/*.ts", "../src/lib/ssml.ts"]
+  "include": ["./**/*.ts", "../src/lib/ssml.ts", "../src/ai/llm.ts"]
 }

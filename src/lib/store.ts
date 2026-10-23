@@ -1,14 +1,14 @@
 // Speichert Einstellungen, Gespräch, Lernerprofil und Vokabeln im localStorage dieses Browsers.
-import { type LevelId, type ModelId, type ScenarioId } from '../data/scenarios';
-import type { Turn } from '../ai/tutor';
+import { type LevelId, type ScenarioId } from '../data/scenarios';
+import type { Turn } from '../ai/llm';
 import type { LessonSummary, TutorReply } from '../ai/schema';
 import type { VocabItem } from './review';
 import { newLearner, type Learner } from './learner';
 
 export interface Settings {
-  /** nur ohne Server nötig (lokale Entwicklung) */
-  apiKey: string;
-  model: ModelId;
+  /** nur ohne Server (lokale Entwicklung): Ollama auf diesem Rechner */
+  ollamaUrl: string;
+  ollamaModel: string;
   /** Startniveau für ein neues Profil */
   level: LevelId;
   scenario: ScenarioId;
@@ -24,8 +24,8 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  apiKey: '',
-  model: 'claude-opus-5-5',
+  ollamaUrl: 'http://localhost:11434',
+  ollamaModel: 'qwen-local',
   level: 'a1',
   scenario: 'frei',
   rate: 0.85,

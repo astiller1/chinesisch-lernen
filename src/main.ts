@@ -1,7 +1,7 @@
 import './styles.css';
 import { SCENARIOS } from './data/scenarios';
 import { save, store } from './lib/store';
-import { loadServerStatus, server } from './lib/server';
+import { loadServerStatus } from './lib/server';
 import { unlockAudio } from './speech/azure';
 import { initChat, pauseChat, startLesson } from './ui/chat';
 import { renderVocab } from './ui/vocab';
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
   const hint = speechModeHint();
   document.getElementById('mode-hint')!.textContent = hint;
   document.getElementById('mode-hint')!.classList.toggle('hidden', !hint);
-  showTab(server.claude || store.settings.apiKey ? 'chat' : 'settings');
+  showTab('chat');
 }
 
 void main();
