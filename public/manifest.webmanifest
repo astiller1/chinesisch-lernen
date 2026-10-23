@@ -1,0 +1,9 @@
+{
+  "name": "说中文 – Chinesisch sprechen",
+  "short_name": "说中文",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#faf7f2",
+  "theme_color": "#c8102e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

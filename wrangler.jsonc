@@ -1,0 +1,7 @@
+// Cloudflare Workers, nur statische Dateien (kostenlos). Veröffentlichen: npm run build && npx wrangler@4 deploy
+// Eigene Adresse (z. B. chinesisch.jan-lab.de) und Cloudflare Access wie bei spiele.jan-lab.de einrichten.
+{
+  "name": "chinesisch-lernen",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
+}

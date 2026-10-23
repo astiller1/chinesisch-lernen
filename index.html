@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c8102e" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <title>说中文 – Chinesisch sprechen</title>
+  </head>
+  <body>
+    <header>
+      <div class="top">
+        <h1>说中文</h1>
+        <nav>
+          <button type="button" data-tab="chat">Gespräch</button>
+          <button type="button" data-tab="vocab">Vokabeln</button>
+          <button type="button" data-tab="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+        </nav>
+      </div>
+      <div id="chat-tools" class="tools">
+        <select id="scenario" aria-label="Thema"></select>
+        <button type="button" id="toggle-pinyin" class="chip" title="Pinyin zeigen">pīn</button>
+        <button type="button" id="toggle-hanzi" class="chip" title="Schriftzeichen zeigen">汉字</button>
+        <button type="button" id="toggle-listen" class="chip" title="Hörmodus: Text erst nach Antippen">👂</button>
+        <button type="button" id="new-chat" class="chip" title="Neues Gespräch">＋</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="chat-view" class="view"><div id="log"></div></section>
+      <section id="vocab-view" class="view hidden"></section>
+      <section id="settings-view" class="view hidden"></section>
+    </main>
+
+    <footer id="composer">
+      <div id="preview" class="preview"></div>
+      <div class="compose-row">
+        <button type="button" id="mic" title="Sprechen (Chinesisch)" aria-label="Sprechen">🎤</button>
+        <textarea id="input" rows="1" placeholder="Sprechen oder tippen (汉字, ni3 hao3, Deutsch) …"></textarea>
+        <button type="button" id="send" title="Senden" aria-label="Senden">➤</button>
+      </div>
+    </footer>
+
+    <div id="sheet"></div>
+    <div id="toast" role="status"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
