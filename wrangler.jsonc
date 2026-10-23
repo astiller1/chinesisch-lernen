@@ -12,7 +12,7 @@
   },
   // KI kostenlos: lokales Qwen über den Tunnel, sonst Qwen auf Workers AI (Tageskontingent).
   "ai": { "binding": "AI" },
-  "vars": { "OLLAMA_URL": "https://ollama.jan-lab.de", "OLLAMA_MODEL": "qwen-local" },
+  "vars": { "OLLAMA_URL": "https://ollama.jan-lab.de", "OLLAMA_MODEL": "qwen-schnell" },
   "routes": [{ "pattern": "chinesisch.jan-lab.de", "custom_domain": true }],
   "workers_dev": false
 }

@@ -51,7 +51,7 @@ async function chat(request: Request, env: Env): Promise<Response> {
       const headers: Record<string, string> = env.OLLAMA_ACCESS_ID
         ? { 'CF-Access-Client-Id': env.OLLAMA_ACCESS_ID, 'CF-Access-Client-Secret': env.OLLAMA_ACCESS_SECRET ?? '' }
         : {};
-      const text = await ollamaChat(env.OLLAMA_URL, env.OLLAMA_MODEL ?? 'qwen-local', messages, schema, headers);
+      const text = await ollamaChat(env.OLLAMA_URL, env.OLLAMA_MODEL ?? 'qwen-schnell', messages, schema, headers);
       return json({ text, engine: 'lokal' } satisfies ChatResponse);
     } catch {
       // PC aus oder Tunnel weg: weiter mit Cloudflare

@@ -9,7 +9,7 @@ keine Option (nur Notbehelf in der lokalen Entwicklung). Oberfläche und Doku au
 - Vite + TypeScript (strict), kein Framework, schlichtes DOM. Läuft als Cloudflare Worker (`worker/`) hinter
   Cloudflare Access; der Worker hält den Azure-Schlüssel und prüft das Access-JWT (fail closed).
 - **KI kostenlos, keine bezahlte API** (Jans Vorgabe): `POST /api/chat` im Worker fragt zuerst Ollama auf Jans PC
-  (`qwen-local`, über den Cloudflare-Tunnel `ollama.jan-lab.de`, gesichert mit Access-Service-Token), sonst Qwen auf
+  (`qwen-schnell`, ca. 8 s pro Antwort; `qwen-local` war mit 25–30 s zu langsam; über den Cloudflare-Tunnel `ollama.jan-lab.de`, gesichert mit Access-Service-Token), sonst Qwen auf
   Cloudflare Workers AI (`WORKERS_AI_MODEL`, kostenloses Tageskontingent). Lokal (`npm run dev`) direkt Ollama.
   Logik in `src/ai/llm.ts` (von App und Worker genutzt). Antwortformat: Zod-Schema → JSON-Schema in der
   Systemanweisung (Ollama zusätzlich `format`), Antwort mit Zod geprüft, bei Fehler ein zweiter Versuch.
