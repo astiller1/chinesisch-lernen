@@ -15,8 +15,11 @@
 ## Version 0.3 (in Arbeit)
 - KI kostenlos statt Claude: lokales Qwen (`qwen-local`) auf Jans PC über den Tunnel, sonst Qwen auf
   Cloudflare Workers AI. Lokal getestet (23.10.2026): gültige Antworten, ca. 17–20 s pro Zug.
-- Noch zu tun: Cloudflare einrichten (Worker, Access für die App, Tunnel `ollama.jan-lab.de` + Service-Token),
-  Workers-AI-Qwen live testen, `tools/einrichten.sh` und README-Abschnitte Einrichten/Kosten anpassen.
+- 23.10.2026: Worker `chinesisch-lernen` unter chinesisch.jan-lab.de online, Access-App „Chinesisch lernen“
+  (Policy „Nur Jan“), Secrets `ACCESS_AUD`/`ACCESS_TEAM_DOMAIN` gesetzt.
+- Noch zu tun: Secrets `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`; Tunnel `ollama.jan-lab.de` + Service-Token
+  (bis dahin antwortet Qwen auf Workers AI); Workers-AI-Qwen live testen, `tools/einrichten.sh` und
+  README-Abschnitte Einrichten/Kosten anpassen.
 
 ## Offen / zu prüfen
 - **Mit echten Schlüsseln testen:** Erkennung zh-CN, Ausspracheprüfung (bewertet sie Töne?), Stimmen und Tempo.
