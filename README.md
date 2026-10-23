@@ -39,6 +39,9 @@ console.anthropic.com → API Keys → neuen Schlüssel anlegen. Unter Billing e
 2. Region **West Europe**, Tarif **Free F0** (kostenlos, mit Monatskontingent) oder S0.
 3. In der Ressource unter „Schlüssel und Endpunkt“: **Schlüssel 1** und **Region** (`westeurope`) notieren.
 
+### Automatisch
+In einer Claude-Code-Sitzung mit den Umgebungsvariablen aus `tools/einrichten.sh` erledigt `tools/einrichten.sh` die Schritte 3 und 4 komplett (Worker, Access nur für eine E-Mail-Adresse, alle Secrets). `node tools/azure-test.mjs` prüft Azure Speech mit echten Sätzen.
+
 ### 3. Cloudflare Worker (in WSL/Terminal im Projektordner)
 ```bash
 npm install
