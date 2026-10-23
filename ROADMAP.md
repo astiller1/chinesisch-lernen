@@ -1,4 +1,4 @@
-# Roadmap
+﻿# Roadmap
 
 ## Version 0.1
 - Gespräch mit Claude zu Themen und Niveaus, Feedback und Tipps auf Deutsch
@@ -17,8 +17,8 @@
   Cloudflare Workers AI. Lokal getestet (23.10.2026): gültige Antworten, ca. 17–20 s pro Zug.
 - 23.10.2026: Worker `chinesisch-lernen` unter chinesisch.jan-lab.de online, Access-App „Chinesisch lernen“
   (Policy „Nur Jan“), Secrets `ACCESS_AUD`/`ACCESS_TEAM_DOMAIN` gesetzt.
-- Noch zu tun: Secrets `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`; Tunnel `ollama.jan-lab.de` + Service-Token
-  (bis dahin antwortet Qwen auf Workers AI); Workers-AI-Qwen live testen, `tools/einrichten.sh` und
+- 23.10.2026: Azure-Secrets gesetzt; Tunnel `ollama.jan-lab.de` (Access nur mit Service-Token `chinesisch-worker`) läuft.
+- Noch zu tun: Test am Handy, Workers-AI-Qwen live testen, `tools/einrichten.sh` und
   README-Abschnitte Einrichten/Kosten anpassen.
 
 ## Offen / zu prüfen
