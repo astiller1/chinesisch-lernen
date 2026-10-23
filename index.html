@@ -7,14 +7,14 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <title>说中文 – Chinesisch sprechen</title>
+    <title>说中文 – Chinesisch mit 林老师</title>
   </head>
   <body>
     <header>
       <div class="top">
         <h1>说中文</h1>
         <nav>
-          <button type="button" data-tab="chat">Gespräch</button>
+          <button type="button" data-tab="chat">Stunde</button>
           <button type="button" data-tab="vocab">Vokabeln</button>
           <button type="button" data-tab="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
         </nav>
@@ -24,8 +24,9 @@
         <button type="button" id="toggle-pinyin" class="chip" title="Pinyin zeigen">pīn</button>
         <button type="button" id="toggle-hanzi" class="chip" title="Schriftzeichen zeigen">汉字</button>
         <button type="button" id="toggle-listen" class="chip" title="Hörmodus: Text erst nach Antippen">👂</button>
-        <button type="button" id="new-chat" class="chip" title="Neues Gespräch">＋</button>
+        <button type="button" id="new-chat" class="chip" title="Neue Stunde">＋</button>
       </div>
+      <div id="mode-hint" class="mode-hint hidden"></div>
     </header>
 
     <main>
@@ -34,12 +35,18 @@
       <section id="settings-view" class="view hidden"></section>
     </main>
 
-    <footer id="composer">
-      <div id="preview" class="preview"></div>
-      <div class="compose-row">
-        <button type="button" id="mic" title="Sprechen (Chinesisch)" aria-label="Sprechen">🎤</button>
-        <textarea id="input" rows="1" placeholder="Sprechen oder tippen (汉字, ni3 hao3, Deutsch) …"></textarea>
-        <button type="button" id="send" title="Senden" aria-label="Senden">➤</button>
+    <footer id="chat-footer">
+      <div id="lesson-bar" class="lesson-bar hidden">
+        <button type="button" id="not-understood" class="small">🤔 Nicht verstanden</button>
+        <button type="button" id="end-lesson" class="small">📒 Stunde beenden</button>
+      </div>
+      <div id="composer">
+        <div id="preview" class="preview"></div>
+        <div class="compose-row">
+          <button type="button" id="mic" title="Sprechen (Chinesisch)" aria-label="Sprechen">🎤</button>
+          <textarea id="input" rows="1" placeholder="Sprechen oder tippen (汉字, ni3 hao3, Deutsch) …"></textarea>
+          <button type="button" id="send" title="Senden" aria-label="Senden">➤</button>
+        </div>
       </div>
     </footer>
 

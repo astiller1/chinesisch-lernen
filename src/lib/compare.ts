@@ -2,13 +2,14 @@
 import { pinyin } from 'pinyin-pro';
 import { isHanzi, stripTones } from './pinyin';
 
-export type CellResult = 'ok' | 'tone' | 'wrong' | 'missing';
+/** ok = richtig, tone = Ton anders, weak = ungenau (Azure), wrong = falsch/anderer Laut, missing = nicht gehört */
+export type CellResult = 'ok' | 'tone' | 'weak' | 'wrong' | 'missing';
 
 export interface CompareCell {
   hanzi: string;
   pinyin: string;
   result: CellResult;
-  /** was stattdessen erkannt wurde (bei tone/wrong) */
+  /** Hinweis: was stattdessen erkannt wurde bzw. Punktzahl */
   heard?: string;
 }
 

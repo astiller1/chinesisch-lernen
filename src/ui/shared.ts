@@ -2,15 +2,13 @@
 import type { Segment } from '../ai/schema';
 import { save, store } from '../lib/store';
 import { newItem } from '../lib/review';
-import { compareSpoken } from '../lib/compare';
-import { speak } from '../speech/tts';
-import { canRecognize, listen } from '../speech/stt';
+import type { CellResult } from '../lib/compare';
+import { canListen, shadow, speak, usesAzure } from '../speech';
 import { button, el } from './dom';
 import { renderComparison, renderSegments } from './segments';
 
 export function say(text: string, slow = false): void {
-  const s = store.settings;
-  speak(text, slow ? Math.max(0.4, s.rate * 0.65) : s.rate, s.voice);
+  speak(text, slow).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
 }
 
 let toastTimer = 0;
@@ -19,17 +17,19 @@ export function toast(message: string): void {
   t.textContent = message;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => t.classList.remove('show'), 3500);
+  toastTimer = window.setTimeout(() => t.classList.remove('show'), 4000);
 }
 
 export function isSaved(hanzi: string): boolean {
   return store.vocab.some((v) => v.hanzi === hanzi);
 }
 
-export function saveWord(seg: Segment): void {
-  if (isSaved(seg.text)) return;
+/** Wort in die Vokabeln aufnehmen (doppelte werden übersprungen). */
+export function saveWord(seg: Segment): boolean {
+  if (!seg.text.trim() || isSaved(seg.text)) return false;
   store.vocab.push(newItem(seg.text, seg.pinyin, seg.de, Date.now()));
   save();
+  return true;
 }
 
 /** Karte unten mit Wort, Pinyin, Bedeutung, Anhören und Merken. */
@@ -37,9 +37,9 @@ export function showWord(seg: Segment): void {
   say(seg.text);
   const sheet = document.getElementById('sheet')!;
   sheet.replaceChildren();
-  const save = button(isSaved(seg.text) ? '★ Gemerkt' : '☆ Merken', () => {
+  const saveBtn = button(isSaved(seg.text) ? '★ Gemerkt' : '☆ Merken', () => {
     saveWord(seg);
-    save.textContent = '★ Gemerkt';
+    saveBtn.textContent = '★ Gemerkt';
   });
   sheet.append(
     el(
@@ -52,7 +52,7 @@ export function showWord(seg: Segment): void {
         { class: 'row' },
         button('▶ Anhören', () => say(seg.text)),
         button('🐢 Langsam', () => say(seg.text, true)),
-        save,
+        saveBtn,
         button('✕', () => sheet.classList.remove('open'), 'ghost', 'Schließen'),
       ),
     ),
@@ -64,51 +64,74 @@ export function closeSheet(): void {
   document.getElementById('sheet')!.classList.remove('open');
 }
 
-/** Knopf "Nachsprechen": hört zu und zeigt je Silbe, ob sie richtig verstanden wurde. */
+const LABELS: Record<CellResult, string> = {
+  ok: 'gut',
+  tone: 'Ton anders',
+  weak: 'ungenau',
+  wrong: 'falsch',
+  missing: 'fehlt',
+};
+
+function verdictText(score: number): string {
+  if (score >= 90) return 'Ausgezeichnet!';
+  if (score >= 75) return 'Gut!';
+  if (score >= 60) return 'Schon ordentlich – hör noch einmal genau hin.';
+  return 'Noch einmal anhören und langsam nachsprechen.';
+}
+
+/** Knopf "Nachsprechen": hört zu und bewertet Silbe für Silbe. */
 export function shadowButton(target: () => string, output: HTMLElement): HTMLButtonElement {
-  let stop: (() => void) | null = null;
-  const b = button('🎤 Nachsprechen', () => {
-    if (stop) {
-      stop();
-      return;
-    }
-    if (!canRecognize()) {
-      toast('Spracherkennung geht nur in Chrome, Edge oder Safari.');
-      return;
-    }
-    b.classList.add('rec');
-    b.textContent = '■ Stopp';
-    output.replaceChildren(el('div', { class: 'hint' }, 'Sprich jetzt …'));
-    stop = listen({
-      onText: (t) => output.replaceChildren(el('div', { class: 'hint' }, t || 'Sprich jetzt …')),
-      onDone: (t) => {
-        stop = null;
-        b.classList.remove('rec');
-        b.textContent = '🎤 Nachsprechen';
-        if (!t) {
-          output.replaceChildren();
-          return;
-        }
-        const r = compareSpoken(target(), t);
-        const pct = Math.round(r.score * 100);
-        const label = pct === 100 ? 'Perfekt verstanden!' : pct >= 70 ? `Gut – ${pct} % verstanden` : `${pct} % verstanden – hör noch einmal hin`;
-        output.replaceChildren(
-          el('div', { class: 'shadow-result' }, el('div', { class: 'hint' }, `${label} (erkannt: ${t})`), renderComparison(r.cells), legend()),
-        );
-      },
-      onError: (m) => toast(m),
-    });
-  }, 'small');
+  let stopFn: (() => void) | null = null;
+  const reset = () => {
+    stopFn = null;
+    b.classList.remove('rec');
+    b.textContent = '🎤 Nachsprechen';
+  };
+  const b = button(
+    '🎤 Nachsprechen',
+    () => {
+      if (stopFn) {
+        stopFn();
+        return;
+      }
+      if (!canListen()) {
+        toast('Spracherkennung ist hier nicht verfügbar.');
+        return;
+      }
+      b.classList.add('rec');
+      b.textContent = '■ Stopp';
+      output.replaceChildren(el('div', { class: 'hint' }, 'Sprich jetzt …'));
+      stopFn = shadow(target(), {
+        onText: (t) => output.replaceChildren(el('div', { class: 'hint' }, t || 'Sprich jetzt …')),
+        onDone: (r) => {
+          reset();
+          if (!r) {
+            output.replaceChildren(el('div', { class: 'hint' }, 'Nichts verstanden. Noch einmal?'));
+            return;
+          }
+          const used = [...new Set(r.cells.map((c) => c.result))];
+          const d = r.details;
+          output.replaceChildren(
+            el(
+              'div',
+              { class: 'shadow-result' },
+              el('div', { class: 'score' }, `${r.score} / 100 · ${verdictText(r.score)}`),
+              renderComparison(r.cells),
+              d
+                ? el('div', { class: 'hint' }, `Genauigkeit ${Math.round(d.accuracy)} · Flüssigkeit ${Math.round(d.fluency)} · Vollständigkeit ${Math.round(d.completeness)}`)
+                : el('div', { class: 'hint' }, `Erkannt: ${r.recognized} (grobe Prüfung ohne Server)`),
+              el('div', { class: 'legend' }, ...used.map((u) => el('span', { class: `r-${u}` }, LABELS[u]))),
+            ),
+          );
+        },
+        onError: (m) => toast(m),
+      });
+    },
+    'small',
+  );
   return b;
 }
 
-function legend(): HTMLElement {
-  return el(
-    'div',
-    { class: 'legend' },
-    el('span', { class: 'r-ok' }, 'richtig'),
-    el('span', { class: 'r-tone' }, 'Ton anders'),
-    el('span', { class: 'r-wrong' }, 'anderer Laut'),
-    el('span', { class: 'r-missing' }, 'nicht gehört'),
-  );
+export function speechModeHint(): string {
+  return usesAzure() ? '' : 'Notbehelf: Browser-Stimme und -Erkennung (Azure auf dem Server noch nicht eingerichtet).';
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { alignWord, numberedToMarks, sentencePinyin, stripTones, toneOf } from '../src/lib/pinyin';
 import { compareSpoken } from '../src/lib/compare';
 import { dueItems, grade, newItem } from '../src/lib/review';
+import { newLearner } from '../src/lib/learner';
 import { learnerMessage, systemPrompt } from '../src/ai/prompt';
 import { TutorReply } from '../src/ai/schema';
 
@@ -80,10 +81,18 @@ describe('Lernkartei', () => {
 });
 
 describe('Prompt und Schema', () => {
-  it('enthält Situation und Niveau', () => {
-    const p = systemPrompt('restaurant', 'a1');
+  it('enthält Situation, Niveau und Gedächtnis', () => {
+    const learner = { ...newLearner(2.4), facts: ['Heißt Jan'], errors: [{ topic: 'Zählwort 碗', example: '一个面条', correction: '一碗面条', count: 3, lastSeen: 0 }] };
+    const p = systemPrompt({ scenario: 'restaurant', learner, recycle: [newItem('茶', 'chá', 'Tee', 0)], now: 0 });
     expect(p).toContain('Restaurant');
-    expect(p).toContain('HSK 1–2');
+    expect(p).toContain('HSK 2.4');
+    expect(p).toContain('Heißt Jan');
+    expect(p).toContain('Zählwort 碗 (3×)');
+    expect(p).toContain('茶 (chá)');
+  });
+
+  it('erste Stunde ohne Gedächtnis', () => {
+    expect(systemPrompt({ scenario: 'frei', learner: newLearner(1.5), recycle: [], now: 0 })).toContain('Ihr kennt euch noch nicht');
   });
 
   it('markiert gesprochene Eingaben', () => {
@@ -100,7 +109,9 @@ describe('Prompt und Schema', () => {
       ],
       translation: 'Hallo!',
       tip: '',
+      new_words: [],
       suggestions: [{ segments: [{ text: '你好', pinyin: 'nǐ hǎo', de: 'hallo' }], de: 'Hallo' }],
+      assessment: { understood: 'ja', errors: [], facts: [] },
     });
     expect(ok.success).toBe(true);
   });

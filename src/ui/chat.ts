@@ -1,14 +1,25 @@
-// Gesprächsansicht: Verlauf, Feedback, Mikrofon und Eingabe.
-import { askTutor, TutorError } from '../ai/tutor';
-import { learnerMessage, START_MESSAGE } from '../ai/prompt';
-import type { TutorReply } from '../ai/schema';
-import { save, store, type ChatEntry } from '../lib/store';
+// Gesprächsansicht: die Stunde mit 林老师 – Verlauf, Feedback, Mikrofon und Eingabe.
+import { ask, TutorError, type Connection } from '../ai/tutor';
+import {
+  END_LESSON_MESSAGE,
+  learnerMessage,
+  LEVEL_NOTICE_STEP,
+  levelNotice,
+  NOT_UNDERSTOOD_MESSAGE,
+  START_MESSAGE,
+  systemPrompt,
+  TEACHER,
+} from '../ai/prompt';
+import { LessonSummary, TutorReply } from '../ai/schema';
+import { emptyConversation, save, store, type ChatEntry } from '../lib/store';
+import { addFacts, addLesson, adjustLevel, recordErrors } from '../lib/learner';
+import { dueItems } from '../lib/review';
 import { hasHanzi, numberedToMarks, sentencePinyin } from '../lib/pinyin';
-import { canRecognize, listen } from '../speech/stt';
-import { stopSpeaking } from '../speech/tts';
+import { server } from '../lib/server';
+import { canListen, listen, stop } from '../speech';
 import { button, el } from './dom';
 import { renderSegments, segmentsText } from './segments';
-import { say, shadowButton, showWord, toast } from './shared';
+import { say, saveWord, shadowButton, showWord, toast } from './shared';
 
 const VERDICT: Record<TutorReply['feedback']['verdict'], [string, string]> = {
   keine: ['', ''],
@@ -25,14 +36,20 @@ let lastSpoken = false;
 const log = () => document.getElementById('log')!;
 const input = () => document.getElementById('input') as HTMLTextAreaElement;
 
-export function initChat(): void {
-  const mic = document.getElementById('mic') as HTMLButtonElement;
-  const send = document.getElementById('send') as HTMLButtonElement;
-  const box = input();
+function connection(): Connection | null {
+  const s = store.settings;
+  if (server.claude) return { viaServer: true, apiKey: '', model: s.model };
+  if (s.apiKey) return { viaServer: false, apiKey: s.apiKey, model: s.model };
+  toast('Kein Claude-Zugang: Schlüssel auf dem Server einrichten oder in den Einstellungen eintragen.');
+  return null;
+}
 
-  if (!canRecognize()) mic.title = 'Spracherkennung geht nur in Chrome, Edge oder Safari';
-  mic.addEventListener('click', toggleMic);
-  send.addEventListener('click', () => void submit());
+export function initChat(): void {
+  const box = input();
+  document.getElementById('mic')!.addEventListener('click', toggleMic);
+  document.getElementById('send')!.addEventListener('click', () => void submit());
+  document.getElementById('not-understood')!.addEventListener('click', () => void notUnderstoodTurn());
+  document.getElementById('end-lesson')!.addEventListener('click', () => void endLesson());
   box.addEventListener('input', () => {
     lastSpoken = false;
     // Ziffern-Pinyin beim Tippen in Tonzeichen umwandeln ("ni3" → "nǐ").
@@ -47,16 +64,17 @@ export function initChat(): void {
     }
   });
   document.getElementById('new-chat')!.addEventListener('click', () => {
-    if (store.conversation.entries.length && !confirm('Neues Gespräch beginnen? Das jetzige wird gelöscht.')) return;
-    void startConversation();
+    if (lessonRunning() && !confirm('Neue Stunde beginnen? Die jetzige wird ohne Auswertung beendet.')) return;
+    void startLesson();
   });
   renderLog();
 }
 
+const lessonRunning = () => store.conversation.turns.length > 0 && !store.conversation.ended;
+
 function updatePreview(): void {
   const text = input().value.trim();
-  const preview = document.getElementById('preview')!;
-  preview.textContent = hasHanzi(text) ? sentencePinyin(text) : '';
+  document.getElementById('preview')!.textContent = hasHanzi(text) ? sentencePinyin(text) : '';
 }
 
 function toggleMic(): void {
@@ -65,7 +83,10 @@ function toggleMic(): void {
     stopListening();
     return;
   }
-  stopSpeaking();
+  if (!canListen()) {
+    toast('Spracherkennung ist hier nicht verfügbar – bitte tippen.');
+    return;
+  }
   mic.classList.add('rec');
   const before = input().value;
   stopListening = listen({
@@ -84,67 +105,137 @@ function toggleMic(): void {
   });
 }
 
-export async function startConversation(): Promise<void> {
-  store.conversation = { turns: [], entries: [] };
+/** Neue Stunde: Anweisung mit dem aktuellen Gedächtnis festlegen und die Lehrerin begrüßen lassen. */
+export async function startLesson(): Promise<void> {
+  if (busy) return;
+  const now = Date.now();
+  const recycle = dueItems(store.vocab, now).slice(0, 8);
+  store.conversation = {
+    ...emptyConversation(),
+    system: systemPrompt({ scenario: store.settings.scenario, learner: store.learner, recycle, now }),
+    announcedLevel: store.learner.level,
+  };
   save();
   renderLog();
-  await exchange(START_MESSAGE);
+  log().querySelector('.empty')?.remove();
+  await turn(START_MESSAGE);
 }
 
 async function submit(): Promise<void> {
   const text = input().value.trim();
   if (!text || busy) return;
-  if (!store.settings.apiKey) {
-    toast('Bitte zuerst den API-Schlüssel in den Einstellungen eintragen.');
+  if (!lessonRunning()) {
+    toast('Starte zuerst eine Stunde.');
     return;
   }
   const spoken = lastSpoken;
   input().value = '';
   lastSpoken = false;
   updatePreview();
-  const entry: ChatEntry = { kind: 'learner', text, spoken };
-  store.conversation.entries.push(entry);
-  log().append(renderEntry(entry));
-  scrollDown();
-  await exchange(learnerMessage(text, spoken));
+  await turn(learnerMessage(text, spoken), { kind: 'learner', text, spoken });
 }
 
-/** Schickt eine Nachricht des Lernenden und zeigt die Antwort. */
-async function exchange(message: string): Promise<void> {
-  if (!store.settings.apiKey) {
-    toast('Bitte zuerst den API-Schlüssel in den Einstellungen eintragen.');
-    return;
-  }
+async function notUnderstoodTurn(): Promise<void> {
+  if (busy || !lessonRunning()) return;
+  // Das Niveau sinkt über die Einschätzung der Lehrerin (understood "nein").
+  await turn(NOT_UNDERSTOOD_MESSAGE, { kind: 'help', text: '🤔 Nicht verstanden – bitte einfacher' });
+}
+
+/** Ein Gesprächszug: Nachricht senden, Antwort zeigen, Gedächtnis und Niveau aktualisieren. */
+async function turn(message: string, shown?: ChatEntry): Promise<void> {
+  const conn = connection();
+  if (!conn || busy) return;
   busy = true;
-  log().querySelector('.empty')?.remove();
   const conv = store.conversation;
+  const added: HTMLElement[] = [];
+  if (shown) {
+    conv.entries.push(shown);
+    added.push(renderEntry(shown));
+  }
+  const turnsBefore = conv.turns.length;
+  const announcedBefore = conv.announcedLevel;
   conv.turns.push({ role: 'user', content: message });
-  const waiting = el('div', { class: 'msg tutor waiting' }, el('span', { class: 'dots' }, '思考中 …'));
-  log().append(waiting);
+  // Niveau merklich geändert: der Lehrerin per Systemnachricht mitteilen (Verlauf bleibt unverändert).
+  if (Math.abs(store.learner.level - conv.announcedLevel) >= LEVEL_NOTICE_STEP) {
+    conv.turns.push({ role: 'system', content: levelNotice(store.learner.level) });
+    conv.announcedLevel = store.learner.level;
+  }
+  const waiting = el('div', { class: 'msg tutor waiting' }, el('span', { class: 'dots' }, `${TEACHER.hanzi} 想一想 …`));
+  log().append(...added, waiting);
   scrollDown();
   try {
-    const s = store.settings;
-    const { reply, raw } = await askTutor({ apiKey: s.apiKey, model: s.model, scenario: s.scenario, level: s.level }, conv.turns);
+    const { value: reply, raw } = await ask(conn, conv.system, conv.turns, TutorReply);
     conv.turns.push({ role: 'assistant', content: raw });
     const entry: ChatEntry = { kind: 'tutor', reply };
     conv.entries.push(entry);
+    learn(reply);
     save();
     waiting.replaceWith(renderEntry(entry));
+    updateLessonButtons();
     scrollDown();
-    if (s.autoPlay) say(segmentsText(reply.reply));
+    if (store.settings.autoPlay) say(segmentsText(reply.reply));
   } catch (e) {
-    // Fehlgeschlagene Nachricht wieder aus dem Verlauf nehmen, damit sie erneut gesendet werden kann.
-    conv.turns.pop();
-    const last = conv.entries[conv.entries.length - 1];
-    if (last?.kind === 'learner' && message !== START_MESSAGE) {
+    // Fehlgeschlagenen Zug zurücknehmen, damit er erneut gesendet werden kann.
+    conv.turns.length = turnsBefore;
+    conv.announcedLevel = announcedBefore;
+    if (shown) {
       conv.entries.pop();
-      input().value = last.text;
-      updatePreview();
-      log().lastElementChild?.previousElementSibling?.remove();
+      if (shown.kind === 'learner') {
+        input().value = shown.text;
+        updatePreview();
+      }
     }
+    added.forEach((a) => a.remove());
     waiting.remove();
     save();
     if (!conv.entries.length) renderLog();
+    toast(e instanceof TutorError ? e.message : `Fehler: ${String(e)}`);
+  } finally {
+    busy = false;
+  }
+}
+
+/** Was die Lehrerin aus diesem Zug lernt. */
+function learn(reply: TutorReply): void {
+  const now = Date.now();
+  const l = store.learner;
+  const a = reply.assessment;
+  l.level = adjustLevel(l.level, reply.feedback.verdict, a.understood);
+  l.errors = recordErrors(l.errors, a.errors, now);
+  l.facts = addFacts(l.facts, a.facts);
+  // Neue Wörter wandern automatisch in die Vokabeln.
+  for (const w of reply.new_words) saveWord(w);
+}
+
+async function endLesson(): Promise<void> {
+  if (busy || !lessonRunning()) return;
+  const conv = store.conversation;
+  if (!conv.entries.some((e) => e.kind === 'learner')) {
+    toast('Sag erst etwas – dann gibt es auch eine Auswertung.');
+    return;
+  }
+  const conn = connection();
+  if (!conn) return;
+  busy = true;
+  const turnsBefore = conv.turns.length;
+  conv.turns.push({ role: 'user', content: END_LESSON_MESSAGE });
+  const waiting = el('div', { class: 'msg tutor waiting' }, el('span', { class: 'dots' }, `${TEACHER.hanzi} schreibt die Auswertung …`));
+  log().append(waiting);
+  scrollDown();
+  try {
+    const { value: summary, raw } = await ask(conn, conv.system, conv.turns, LessonSummary);
+    conv.turns.push({ role: 'assistant', content: raw });
+    conv.entries.push({ kind: 'summary', summary });
+    conv.ended = true;
+    store.learner.lessons = addLesson(store.learner.lessons, summary.notes, Date.now());
+    for (const w of summary.learned) saveWord(w);
+    save();
+    waiting.remove();
+    renderLog();
+  } catch (e) {
+    conv.turns.length = turnsBefore;
+    waiting.remove();
+    save();
     toast(e instanceof TutorError ? e.message : `Fehler: ${String(e)}`);
   } finally {
     busy = false;
@@ -156,32 +247,66 @@ function scrollDown(): void {
   l.scrollTop = l.scrollHeight;
 }
 
+function updateLessonButtons(): void {
+  const running = lessonRunning();
+  document.getElementById('lesson-bar')!.classList.toggle('hidden', !running);
+  document.getElementById('composer')!.classList.toggle('disabled', !running);
+}
+
 export function renderLog(): void {
   const l = log();
   l.replaceChildren(...store.conversation.entries.map(renderEntry));
-  if (!store.conversation.entries.length) {
+  if (!store.conversation.entries.length || store.conversation.ended) {
+    const first = store.learner.lessons.length === 0 && !store.conversation.ended;
     l.append(
       el(
         'div',
         { class: 'empty' },
-        el('p', {}, 'Wähle oben ein Thema und starte ein Gespräch. Antworte per 🎤 auf Chinesisch – oder tippe (Schriftzeichen, Pinyin wie „ni3 hao3“ oder Deutsch, wenn dir ein Wort fehlt).'),
-        button('Gespräch starten', () => void startConversation(), 'primary'),
+        el('div', { class: 'teacher-face' }, '👩‍🏫'),
+        el(
+          'p',
+          {},
+          first
+            ? `${TEACHER.hanzi} (${TEACHER.pinyin}) ist deine Chinesischlehrerin. Ihr plaudert, sie verbessert dich behutsam und merkt sich, was du kannst und wo du hängst. Antworte per 🎤 auf Chinesisch – oder tippe (Schriftzeichen, „ni3 hao3“ oder Deutsch, wenn dir ein Wort fehlt).`
+            : `${TEACHER.hanzi} freut sich auf die nächste Stunde. Thema wählen und los.`,
+        ),
+        button(first ? 'Erste Stunde beginnen' : 'Neue Stunde beginnen', () => void startLesson(), 'primary'),
       ),
     );
   }
+  updateLessonButtons();
   scrollDown();
 }
 
 function renderEntry(entry: ChatEntry): HTMLElement {
-  if (entry.kind === 'learner') {
-    return el(
-      'div',
-      { class: 'msg learner' },
-      el('div', { class: 'text' }, entry.spoken ? '🎤 ' : '', entry.text),
-      hasHanzi(entry.text) ? el('div', { class: 'py-line' }, sentencePinyin(entry.text)) : null,
-    );
+  switch (entry.kind) {
+    case 'learner':
+      return el(
+        'div',
+        { class: 'msg learner' },
+        el('div', { class: 'text' }, entry.spoken ? '🎤 ' : '', entry.text),
+        hasHanzi(entry.text) ? el('div', { class: 'py-line' }, sentencePinyin(entry.text)) : null,
+      );
+    case 'help':
+      return el('div', { class: 'msg learner help' }, entry.text);
+    case 'summary':
+      return renderSummary(entry.summary);
+    case 'tutor':
+      return renderTutor(entry.reply);
   }
-  return renderTutor(entry.reply);
+}
+
+function renderSummary(s: LessonSummary): HTMLElement {
+  return el(
+    'div',
+    { class: 'summary' },
+    el('h3', {}, '📒 Auswertung der Stunde'),
+    el('p', {}, s.praise),
+    s.learned.length ? el('div', { class: 'fb-title' }, 'Heute gelernt (steht jetzt in deinen Vokabeln):') : null,
+    s.learned.length ? renderSegments(s.learned, showWord) : null,
+    s.focus.length ? el('div', { class: 'fb-title' }, 'Woran du arbeiten kannst:') : null,
+    s.focus.length ? el('ul', {}, ...s.focus.map((f) => el('li', {}, f))) : null,
+  );
 }
 
 function renderTutor(r: TutorReply): HTMLElement {
@@ -207,7 +332,7 @@ function renderTutor(r: TutorReply): HTMLElement {
   const body = el('div', { class: 'body' }, renderSegments(r.reply, showWord));
   const translation = el('div', { class: 'translation hidden' }, r.translation);
   const out = el('div');
-  const msg = el('div', { class: 'msg tutor' }, body);
+  const msg = el('div', { class: 'msg tutor' }, el('div', { class: 'who' }, `👩‍🏫 ${TEACHER.hanzi}`), body);
   if (store.settings.listenMode) {
     body.classList.add('covered');
     body.addEventListener('click', () => body.classList.remove('covered'), { once: true });
@@ -224,6 +349,9 @@ function renderTutor(r: TutorReply): HTMLElement {
     ),
     out,
   );
+  if (r.new_words.length) {
+    msg.append(el('div', { class: 'new-words' }, '✨ Neu: ', ...r.new_words.map((w) => button(`${w.text} ${w.pinyin} – ${w.de}`, () => showWord(w), 'small link'))));
+  }
   if (r.tip) msg.append(el('div', { class: 'tip' }, '💡 ', r.tip));
   if (r.suggestions.length) {
     const list = el('div', { class: 'suggestions hidden' });
@@ -237,4 +365,10 @@ function renderTutor(r: TutorReply): HTMLElement {
   }
   wrap.append(msg);
   return wrap;
+}
+
+/** Beim Verlassen der Ansicht laufende Aufnahme und Ton stoppen. */
+export function pauseChat(): void {
+  stopListening?.();
+  stop();
 }

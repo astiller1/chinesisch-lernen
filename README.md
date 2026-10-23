@@ -1,52 +1,86 @@
-# 说中文 – Chinesisch sprechen
+# 说中文 – Chinesisch mit 林老师
 
-Persönliche Web-App zum **Sprechen und Hören** von Hochchinesisch: Gespräche mit Claude, Verbesserungen und Tipps
-auf Deutsch, und **überall Pinyin** – nach Ton gefärbt über jedem Schriftzeichen. Schriftzeichen lassen sich
-ausblenden; gezielt Zeichen lernen ist zweitrangig (siehe `ROADMAP.md`).
+Persönliche Web-App fürs Handy und den PC: **Plaudern mit einer KI-Chinesischlehrerin** (林老师, Lín lǎoshī),
+die dich behutsam verbessert, sich merkt, was du kannst, und dich nach und nach weiterbringt. **Pinyin überall**,
+nach Ton gefärbt über jedem Zeichen. Gehirn: Claude. Stimme, Spracherkennung und Ausspracheprüfung: Azure Speech.
 
 ## Was die App kann
-- **Gespräch mit der KI** zu einem Thema (Restaurant, Taxi, Kennenlernen …) auf deinem Niveau (HSK 1–2 bis 5+).
-- **Sprechen per Mikrofon** (Spracherkennung des Browsers) oder tippen: Schriftzeichen, Ziffern-Pinyin
-  (`ni3 hao3` wird beim Tippen zu `nǐ hǎo`) oder Deutsch, wenn dir ein Wort fehlt.
-- **Feedback zu jeder Äußerung:** verbesserter Satz mit Pinyin und Erklärung auf Deutsch. Hat die Erkennung etwas
-  Seltsames verstanden, rät die KI, was gemeint war, und nennt die wahrscheinliche Ursache (z. B. falscher Ton).
-- **Pinyin richtig:** eine Silbe pro Zeichen, Tonfarben (1 rot, 2 grün, 3 blau, 4 lila, neutral grau), 一/不 mit
-  gesprochenem Ton. Fehlt Pinyin, ergänzt es das Wörterbuch `pinyin-pro`. Deine eigenen Sätze bekommen ebenfalls Pinyin.
-- **Hören:** Antworten werden vorgelesen (Tempo einstellbar, 🐢 langsam), **Hörmodus** 👂 verdeckt den Text, bis du ihn antippst.
-- **Nachsprechen 🎤:** prüft Silbe für Silbe, was die Erkennung verstanden hat (richtig / Ton anders / anderer Laut / nicht gehört).
-- **Antwortideen** 💬, wenn dir nichts einfällt, und **Wörter antippen** → Bedeutung, Anhören, Merken.
-- **Vokabeln:** gemerkte Wörter als Hörkarten (Leitner-System: erst hören, dann Bedeutung aufdecken).
-
-## Starten
-```bash
-npm install
-npm run dev        # http://localhost:5173 (mit --host auch im WLAN erreichbar)
-npm test           # vitest: Pinyin, Nachsprech-Vergleich, Lernkartei, Prompt, Schema
-npm run build      # Typprüfung + Build nach dist/
-```
-Beim ersten Start in **⚙ Einstellungen** den Claude-API-Schlüssel eintragen (console.anthropic.com → API Keys,
-am besten mit monatlichem Ausgabenlimit). Er bleibt nur im localStorage dieses Browsers und geht direkt an
-api.anthropic.com.
-
-**Browser:** Chrome oder Edge (Desktop und Android) empfohlen; Safari (iOS) geht meist auch. Firefox kann keine
-Spracherkennung – dort nur tippen. Für das Mikrofon auf dem Handy braucht die Seite **HTTPS** (localhost geht immer).
-Chinesische Stimme unter Windows: Einstellungen → Zeit und Sprache → Sprache → „Chinesisch (vereinfacht)“ hinzufügen.
-
-## Veröffentlichen (für das Handy)
-Wie `spiele.jan-lab.de`: Cloudflare Workers, nur statische Dateien, kostenlos.
-```bash
-npm run build
-npx wrangler@4 deploy      # nutzt wrangler.jsonc
-```
-Danach im Cloudflare-Dashboard eine eigene Adresse (z. B. `chinesisch.jan-lab.de`) und **Cloudflare Access**
-davorsetzen, damit nur du die Seite öffnen kannst. Auf dem Handy: Seite öffnen → „Zum Startbildschirm hinzufügen“.
-
-## Kosten
-Ein Gesprächszug kostet mit Opus 5.5 grob 1–2 Cent (der Verlauf wird zwischengespeichert, Cache), mit Haiku 5.5
-nur Bruchteile eines Cents. Modell in den Einstellungen wählbar.
+- **Stunden mit 林老师:** Thema wählen (Plaudern, Restaurant, Taxi …), sprechen per 🎤, sie antwortet kurz und fragt
+  zurück. Am Ende „📒 Stunde beenden“ → Auswertung mit Lob, gelernten Wörtern und dem, woran du arbeiten kannst.
+- **Sie passt sich an:** Ein Niveau-Wert (HSK 1.0–6.0) steigt langsam, wenn es gut läuft, und sinkt deutlicher,
+  wenn du nicht mitkommst. Bei „🤔 Nicht verstanden“ sagt sie es einfacher.
+- **Sie hat ein Gedächtnis:** typische Fehler (übt sie gezielt wieder), Persönliches, Notizen zu den letzten Stunden,
+  fällige Vokabeln (baut sie ins Gespräch ein). Alles einsehbar und löschbar unter ⚙ „Was 林老师 über dich weiß“.
+- **Feedback zu jedem Satz:** verbesserter Satz mit Pinyin, Erklärung auf Deutsch. Versteht die Erkennung etwas
+  Seltsames, rät sie, was du meintest, und nennt die wahrscheinliche Ursache (z. B. Ton).
+- **Pinyin:** eine Silbe pro Zeichen, Tonfarben (1 rot, 2 grün, 3 blau, 4 lila, neutral grau), 一/不 mit
+  gesprochenem Ton. Pinyin oder Zeichen ausblendbar, Hörmodus 👂 verdeckt den Text bis zum Antippen.
+- **Nachsprechen 🎤** bei jedem Satz: Azure-Ausspracheprüfung mit Punktzahl und Bewertung je Wort.
+- **Vokabeln:** neue Wörter landen automatisch dort; Hörkarten mit Leitner-System.
+- Tippen geht auch: Schriftzeichen, `ni3 hao3` (wird zu `nǐ hǎo`) oder Deutsch („Wie sagt man …?“).
 
 ## Aufbau
-- `src/ai/` – `schema.ts` (Antwortformat, von der API erzwungen), `prompt.ts` (Systemanweisung), `tutor.ts` (API-Aufruf)
-- `src/lib/` – reine Logik: `pinyin.ts`, `compare.ts` (Nachsprechen), `review.ts` (Lernkartei), `store.ts` (localStorage)
-- `src/speech/` – Vorlesen (`tts.ts`) und Spracherkennung (`stt.ts`) über die Web Speech API
-- `src/ui/` – Gespräch, Vokabeln, Einstellungen; `src/data/scenarios.ts` – Themen, Niveaus, Modelle
+```
+Handy/PC ──▶ Cloudflare Worker (chinesisch.jan-lab.de, hinter Cloudflare Access)
+               ├─ App (dist/)
+               ├─ /api/anthropic  → Claude (Schlüssel auf dem Server)
+               ├─ /api/speech/tts → Azure-Sprachausgabe (MP3)
+               └─ /api/speech/token → kurzlebiges Azure-Token für Erkennung/Ausspracheprüfung im Browser
+```
+Der Worker prüft bei jeder `/api`-Anfrage das Access-Login (JWT). Ohne Access-Konfiguration bleiben die Schlüssel gesperrt.
+
+## Einrichten (einmalig, ca. 20 Minuten)
+
+### 1. Claude-API-Schlüssel
+console.anthropic.com → API Keys → neuen Schlüssel anlegen. Unter Billing ein **monatliches Ausgabenlimit** setzen.
+
+### 2. Azure Speech
+1. portal.azure.com → „Ressource erstellen“ → **Speech** (Azure AI Speech) suchen → Erstellen.
+2. Region **West Europe**, Tarif **Free F0** (kostenlos, mit Monatskontingent) oder S0.
+3. In der Ressource unter „Schlüssel und Endpunkt“: **Schlüssel 1** und **Region** (`westeurope`) notieren.
+
+### 3. Cloudflare Worker (in WSL/Terminal im Projektordner)
+```bash
+npm install
+npx wrangler login                 # Browser, „Allow“
+npm run deploy                     # baut und lädt hoch (Adresse steht in wrangler.jsonc)
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put AZURE_SPEECH_KEY
+npx wrangler secret put AZURE_SPEECH_REGION     # z. B. westeurope
+```
+
+### 4. Cloudflare Access (nur du kommst rein)
+1. Cloudflare Zero Trust → Access → Applications → **Add an application** → Self-hosted,
+   Domain `chinesisch.jan-lab.de`, Policy z. B. „nur Jan“ (E-Mail-Code).
+2. In der Anwendung den **Application Audience (AUD) Tag** kopieren; unter Settings den **Team-Domain** ablesen
+   (`<team>.cloudflareaccess.com`).
+3. ```bash
+   npx wrangler secret put ACCESS_AUD
+   npx wrangler secret put ACCESS_TEAM_DOMAIN     # z. B. jan-lab.cloudflareaccess.com
+   ```
+
+### 5. Handy
+`https://chinesisch.jan-lab.de` öffnen, anmelden, Mikrofon erlauben, „Zum Startbildschirm hinzufügen“.
+Unter ⚙ müssen beide Häkchen grün sein (Claude auf dem Server, Sprache: Azure).
+
+## Entwicklung
+```bash
+npm run dev        # http://localhost:5173 – ohne Worker: Claude-Schlüssel unter ⚙, Browser-Sprache als Notbehelf
+npm test           # vitest: Pinyin, Gedächtnis/Niveau, Ausspracheprüfung, SSML, Worker-Zugangsprüfung
+npm run build      # Typprüfung (App + Worker) und Build nach dist/
+npm run deploy     # Build + wrangler deploy
+```
+Lokal mit Worker: `.dev.vars` mit den Secrets und `ALLOW_WITHOUT_ACCESS=1` anlegen (nicht einchecken), dann
+`npm run build && npx wrangler dev`.
+
+## Kosten (grob)
+- Claude: ein Gesprächszug mit Opus 5.5 grob 1–2 Cent (Verlauf wird zwischengespeichert), Haiku 5.5 ein Bruchteil davon.
+- Azure Speech: Free-Tarif mit Monatskontingent; Wiederholungen derselben Sätze werden im Browser zwischengespeichert.
+- Cloudflare Workers und Access: kostenlos im Rahmen der Free-Pläne.
+
+## Code
+- `src/ai/` – `prompt.ts` (林老师, Gedächtnis, Niveau), `schema.ts` (Antwortformate), `tutor.ts` (API-Aufruf)
+- `src/lib/` – reine Logik: `learner.ts` (Niveau, Fehler, Notizen), `pinyin.ts`, `compare.ts`, `assessment.ts`,
+  `review.ts` (Lernkartei), `ssml.ts`, `store.ts` (localStorage), `server.ts`
+- `src/speech/` – `azure.ts` (Stimme, Erkennung, Ausspracheprüfung), `index.ts` (Auswahl), Browser-Notbehelf
+- `src/ui/` – Stunde, Vokabeln, Einstellungen/Gedächtnis; `worker/` – Cloudflare Worker mit Access-Prüfung

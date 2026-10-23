@@ -1,19 +1,20 @@
 import './styles.css';
 import { SCENARIOS } from './data/scenarios';
 import { save, store } from './lib/store';
-import { initChat, startConversation } from './ui/chat';
+import { loadServerStatus, server } from './lib/server';
+import { unlockAudio } from './speech/azure';
+import { initChat, pauseChat, startLesson } from './ui/chat';
 import { renderVocab } from './ui/vocab';
 import { renderSettings } from './ui/settings';
-import { closeSheet } from './ui/shared';
+import { closeSheet, speechModeHint } from './ui/shared';
 
 type Tab = 'chat' | 'vocab' | 'settings';
-let tab: Tab = 'chat';
 
 function showTab(next: Tab): void {
-  tab = next;
+  if (next !== 'chat') pauseChat();
   document.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === next));
   document.querySelectorAll<HTMLElement>('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `${next}-view`));
-  document.getElementById('composer')!.classList.toggle('hidden', next !== 'chat');
+  document.getElementById('chat-footer')!.classList.toggle('hidden', next !== 'chat');
   document.getElementById('chat-tools')!.classList.toggle('hidden', next !== 'chat');
   if (next === 'vocab') renderVocab();
   if (next === 'settings') renderSettings();
@@ -40,7 +41,8 @@ function initToolbar(): void {
   scenario.addEventListener('change', () => {
     store.settings.scenario = scenario.value as typeof store.settings.scenario;
     save();
-    if (!store.conversation.entries.length || confirm('Mit dem neuen Thema ein neues Gespräch beginnen?')) void startConversation();
+    const running = store.conversation.turns.length > 0 && !store.conversation.ended;
+    if (!running || confirm('Mit dem neuen Thema eine neue Stunde beginnen?')) void startLesson();
   });
 
   const toggle = (id: string, key: 'showPinyin' | 'showHanzi' | 'listenMode') =>
@@ -59,16 +61,19 @@ function initToolbar(): void {
   document.addEventListener('click', (e) => {
     if (!(e.target as HTMLElement).closest('#sheet')) closeSheet();
   });
+  // Handys spielen Ton erst nach einer Berührung ab.
+  document.addEventListener('pointerdown', unlockAudio, { once: true });
 }
 
-initToolbar();
-applyDisplay();
-initChat();
-showTab(store.settings.apiKey ? 'chat' : 'settings');
-
-// Stimmen werden im Browser erst nach und nach geladen.
-if ('speechSynthesis' in window) {
-  speechSynthesis.addEventListener('voiceschanged', () => {
-    if (tab === 'settings') renderSettings();
-  });
+async function main(): Promise<void> {
+  await loadServerStatus();
+  initToolbar();
+  applyDisplay();
+  initChat();
+  const hint = speechModeHint();
+  document.getElementById('mode-hint')!.textContent = hint;
+  document.getElementById('mode-hint')!.classList.toggle('hidden', !hint);
+  showTab(server.claude || store.settings.apiKey ? 'chat' : 'settings');
 }
+
+void main();
