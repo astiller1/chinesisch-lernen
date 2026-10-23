@@ -29,9 +29,12 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 async function allowed(request: Request, env: Env): Promise<boolean> {
   if (env.ALLOW_WITHOUT_ACCESS === '1') return true;
   // Ohne Access-Konfiguration bleiben die Schlüssel gesperrt (lieber zu als offen).
-  if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return false;
+  // trim: per Pipe gesetzte Secrets können einen Zeilenumbruch enthalten.
+  const teamDomain = env.ACCESS_TEAM_DOMAIN?.trim();
+  const aud = env.ACCESS_AUD?.trim();
+  if (!teamDomain || !aud) return false;
   const token = accessToken(request);
-  return !!token && (await verifyAccess(token, { teamDomain: env.ACCESS_TEAM_DOMAIN, aud: env.ACCESS_AUD }));
+  return !!token && (await verifyAccess(token, { teamDomain, aud }));
 }
 
 const speechReady = (env: Env) => !!(env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION);
